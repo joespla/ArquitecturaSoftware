@@ -1,44 +1,25 @@
 'use strict';
 
-/**
- * Module dependencies.
- */
 
 var http = require('http');
 var read = require('fs').readFileSync;
 var path = require('path');
 var exists = require('fs').existsSync;
 var engine = require('engine.io');
-var clientVersion = require('socket.io-client/package.json').version;
 var Client = require('./client');
 var Emitter = require('events').EventEmitter;
 var Namespace = require('./namespace');
-var ParentNamespace = require('./parent-namespace');
 var Adapter = require('socket.io-adapter');
 var parser = require('socket.io-parser');
 var debug = require('debug')('socket.io:server');
 var url = require('url');
 
-/**
- * Module exports.
- */
 
 module.exports = Server;
-
-/**
- * Socket.IO client source.
- */
 
 var clientSource = undefined;
 var clientSourceMap = undefined;
 
-/**
- * Server constructor.
- *
- * @param {http.Server|Number|Object} srv http server, port or options
- * @param {Object} [opts]
- * @api public
- */
 
 function Server(srv, opts){
   if (!(this instanceof Server)) return new Server(srv, opts);
@@ -59,17 +40,10 @@ function Server(srv, opts){
   if (srv) this.attach(srv, opts);
 }
 
-/**
- * Server request verification function, that checks for allowed origins
- *
- * @param {http.IncomingMessage} req request
- * @param {Function} fn callback to be called with the result: `fn(err, success)`
- */
-
 Server.prototype.checkRequest = function(req, fn) {
   var origin = req.headers.origin || req.headers.referer;
 
-  // file:// URLs produce a null Origin which can't be authorized via echo-back
+  
   if ('null' == origin || null == origin) origin = '*';
 
   if (!!origin && typeof(this._origins) == 'function') return this._origins(origin, fn);
@@ -94,13 +68,6 @@ Server.prototype.checkRequest = function(req, fn) {
   fn(null, false);
 };
 
-/**
- * Sets/gets whether client code is being served.
- *
- * @param {Boolean} v whether to serve client code
- * @return {Server|Boolean} self when setting or value when getting
- * @api public
- */
 
 Server.prototype.serveClient = function(v){
   if (!arguments.length) return this._serveClient;
@@ -123,9 +90,6 @@ Server.prototype.serveClient = function(v){
   return this;
 };
 
-/**
- * Old settings for backwards compatibility
- */
 
 var oldSettings = {
   "transports": "transports",
@@ -134,11 +98,6 @@ var oldSettings = {
   "destroy buffer size": "maxHttpBufferSize"
 };
 
-/**
- * Backwards compatibility.
- *
- * @api public
- */
 
 Server.prototype.set = function(key, val){
   if ('authorization' == key && val) {
@@ -162,58 +121,12 @@ Server.prototype.set = function(key, val){
   return this;
 };
 
-/**
- * Executes the middleware for an incoming namespace not already created on the server.
- *
- * @param {String} name name of incoming namespace
- * @param {Object} query the query parameters
- * @param {Function} fn callback
- * @api private
- */
-
-Server.prototype.checkNamespace = function(name, query, fn){
-  if (this.parentNsps.size === 0) return fn(false);
-
-  const keysIterator = this.parentNsps.keys();
-
-  const run = () => {
-    let nextFn = keysIterator.next();
-    if (nextFn.done) {
-      return fn(false);
-    }
-    nextFn.value(name, query, (err, allow) => {
-      if (err || !allow) {
-        run();
-      } else {
-        fn(this.parentNsps.get(nextFn.value).createChild(name));
-      }
-    });
-  };
-
-  run();
-};
-
-/**
- * Sets the client serving path.
- *
- * @param {String} v pathname
- * @return {Server|String} self when setting or value when getting
- * @api public
- */
-
 Server.prototype.path = function(v){
   if (!arguments.length) return this._path;
   this._path = v.replace(/\/$/, '');
   return this;
 };
 
-/**
- * Sets the adapter for rooms.
- *
- * @param {Adapter} v pathname
- * @return {Server|Adapter} self when setting or value when getting
- * @api public
- */
 
 Server.prototype.adapter = function(v){
   if (!arguments.length) return this._adapter;
@@ -226,14 +139,6 @@ Server.prototype.adapter = function(v){
   return this;
 };
 
-/**
- * Sets the allowed origins for requests.
- *
- * @param {String|String[]} v origins
- * @return {Server|Adapter} self when setting or value when getting
- * @api public
- */
-
 Server.prototype.origins = function(v){
   if (!arguments.length) return this._origins;
 
@@ -241,14 +146,6 @@ Server.prototype.origins = function(v){
   return this;
 };
 
-/**
- * Attaches socket.io to a server or port.
- *
- * @param {http.Server|Number} server or port
- * @param {Object} options passed to engine.io
- * @return {Server} self
- * @api public
- */
 
 Server.prototype.listen =
 Server.prototype.attach = function(srv, opts){
@@ -258,7 +155,6 @@ Server.prototype.attach = function(srv, opts){
     throw new Error(msg);
   }
 
-  // handle a port as a string
   if (Number(srv) == srv) {
     srv = Number(srv);
   }
@@ -274,7 +170,6 @@ Server.prototype.attach = function(srv, opts){
 
   }
 
-  // set engine.io path to `/socket.io`
   opts = opts || {};
   opts.path = opts.path || this.path();
   // set origins verification
@@ -288,8 +183,6 @@ Server.prototype.attach = function(srv, opts){
   var self = this;
   var connectPacket = { type: parser.CONNECT, nsp: '/' };
   this.encoder.encode(connectPacket, function (encodedPacket){
-    // the CONNECT packet will be merged with Engine.IO handshake,
-    // to reduce the number of round trips
     opts.initialPacket = encodedPacket;
 
     self.initEngine(srv, opts);
@@ -297,34 +190,18 @@ Server.prototype.attach = function(srv, opts){
   return this;
 };
 
-/**
- * Initialize engine
- *
- * @param {Object} options passed to engine.io
- * @api private
- */
 
 Server.prototype.initEngine = function(srv, opts){
-  // initialize engine
   debug('creating engine.io instance with opts %j', opts);
   this.eio = engine.attach(srv, opts);
 
-  // attach static file serving
   if (this._serveClient) this.attachServe(srv);
 
-  // Export http server
   this.httpServer = srv;
 
-  // bind to engine events
   this.bind(this.eio);
 };
 
-/**
- * Attaches the static file serving.
- *
- * @param {Function|http.Server} srv http server
- * @api private
- */
 
 Server.prototype.attachServe = function(srv){
   debug('attaching client serving req handler');
@@ -346,102 +223,12 @@ Server.prototype.attachServe = function(srv){
   });
 };
 
-/**
- * Handles a request serving `/socket.io.js`
- *
- * @param {http.Request} req
- * @param {http.Response} res
- * @api private
- */
-
-Server.prototype.serve = function(req, res){
-  // Per the standard, ETags must be quoted:
-  // https://tools.ietf.org/html/rfc7232#section-2.3
-  var expectedEtag = '"' + clientVersion + '"';
-
-  var etag = req.headers['if-none-match'];
-  if (etag) {
-    if (expectedEtag == etag) {
-      debug('serve client 304');
-      res.writeHead(304);
-      res.end();
-      return;
-    }
-  }
-
-  debug('serve client source');
-  res.setHeader('Content-Type', 'application/javascript');
-  res.setHeader('ETag', expectedEtag);
-  res.writeHead(200);
-  res.end(clientSource);
-};
-
-/**
- * Handles a request serving `/socket.io.js.map`
- *
- * @param {http.Request} req
- * @param {http.Response} res
- * @api private
- */
-
-Server.prototype.serveMap = function(req, res){
-  // Per the standard, ETags must be quoted:
-  // https://tools.ietf.org/html/rfc7232#section-2.3
-  var expectedEtag = '"' + clientVersion + '"';
-
-  var etag = req.headers['if-none-match'];
-  if (etag) {
-    if (expectedEtag == etag) {
-      debug('serve client 304');
-      res.writeHead(304);
-      res.end();
-      return;
-    }
-  }
-
-  debug('serve client sourcemap');
-  res.setHeader('Content-Type', 'application/json');
-  res.setHeader('ETag', expectedEtag);
-  res.writeHead(200);
-  res.end(clientSourceMap);
-};
-
-/**
- * Binds socket.io to an engine.io instance.
- *
- * @param {engine.Server} engine engine.io (or compatible) server
- * @return {Server} self
- * @api public
- */
-
-Server.prototype.bind = function(engine){
-  this.engine = engine;
-  this.engine.on('connection', this.onconnection.bind(this));
-  return this;
-};
-
-/**
- * Called with each incoming transport connection.
- *
- * @param {engine.Socket} conn
- * @return {Server} self
- * @api public
- */
-
 Server.prototype.onconnection = function(conn){
   debug('incoming connection with id %s', conn.id);
   var client = new Client(this, conn);
   client.connect('/');
   return this;
 };
-
-/**
- * Looks up a namespace.
- *
- * @param {String|RegExp|Function} name nsp name
- * @param {Function} [fn] optional, nsp `connection` ev handler
- * @api public
- */
 
 Server.prototype.of = function(name, fn){
   if (typeof name === 'function' || name instanceof RegExp) {
@@ -468,13 +255,6 @@ Server.prototype.of = function(name, fn){
   return nsp;
 };
 
-/**
- * Closes server connection
- *
- * @param {Function} [fn] optional, called as `fn([err])` on error OR all conns closed
- * @api public
- */
-
 Server.prototype.close = function(fn){
   for (var id in this.nsps['/'].sockets) {
     if (this.nsps['/'].sockets.hasOwnProperty(id)) {
@@ -491,9 +271,6 @@ Server.prototype.close = function(fn){
   }
 };
 
-/**
- * Expose main namespace (/).
- */
 
 var emitterMethods = Object.keys(Emitter.prototype).filter(function(key){
   return typeof Emitter.prototype[key] === 'function';

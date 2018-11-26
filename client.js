@@ -1,31 +1,13 @@
-
-/**
- * Module dependencies.
- */
-
-var parser = require('socket.io-parser');
 var debug = require('debug')('socket.io:client');
 var url = require('url');
 
-/**
- * Module exports.
- */
-
 module.exports = Client;
 
-/**
- * Client constructor.
- *
- * @param {Server} server instance
- * @param {Socket} conn
- * @api private
- */
 
 function Client(server, conn){
   this.server = server;
   this.conn = conn;
   this.encoder = server.encoder;
-  this.decoder = new server.parser.Decoder();
   this.id = conn.id;
   this.request = conn.request;
   this.setup();
@@ -34,11 +16,6 @@ function Client(server, conn){
   this.connectBuffer = [];
 }
 
-/**
- * Sets up event listeners.
- *
- * @api private
- */
 
 Client.prototype.setup = function(){
   this.onclose = this.onclose.bind(this);
@@ -52,14 +29,6 @@ Client.prototype.setup = function(){
   this.conn.on('close', this.onclose);
 };
 
-/**
- * Connects a client to a namespace.
- *
- * @param {String} name namespace
- * @param {Object} query the query parameters
- * @api private
- */
-
 Client.prototype.connect = function(name, query){
   if (this.server.nsps[name]) {
     debug('connecting to namespace %s', name);
@@ -70,20 +39,10 @@ Client.prototype.connect = function(name, query){
     if (dynamicNsp) {
       debug('dynamic namespace %s was created', dynamicNsp.name);
       this.doConnect(name, query);
-    } else {
-      debug('creation of namespace %s was denied', name);
-      this.packet({ type: parser.ERROR, nsp: name, data: 'Invalid namespace' });
     }
   });
 };
 
-/**
- * Connects a client to a namespace.
- *
- * @param {String} name namespace
- * @param {String} query the query parameters
- * @api private
- */
 
 Client.prototype.doConnect = function(name, query){
   var nsp = this.server.of(name);
@@ -105,11 +64,6 @@ Client.prototype.doConnect = function(name, query){
   });
 };
 
-/**
- * Disconnects from all namespaces and closes transport.
- *
- * @api private
- */
 
 Client.prototype.disconnect = function(){
   for (var id in this.sockets) {
@@ -121,11 +75,6 @@ Client.prototype.disconnect = function(){
   this.close();
 };
 
-/**
- * Removes a socket. Called by each `Socket`.
- *
- * @api private
- */
 
 Client.prototype.remove = function(socket){
   if (this.sockets.hasOwnProperty(socket.id)) {
@@ -137,11 +86,6 @@ Client.prototype.remove = function(socket){
   }
 };
 
-/**
- * Closes the underlying connection.
- *
- * @api private
- */
 
 Client.prototype.close = function(){
   if ('open' == this.conn.readyState) {
@@ -151,19 +95,11 @@ Client.prototype.close = function(){
   }
 };
 
-/**
- * Writes a packet to the transport.
- *
- * @param {Object} packet object
- * @param {Object} opts
- * @api private
- */
 
 Client.prototype.packet = function(packet, opts){
   opts = opts || {};
   var self = this;
 
-  // this writes to the actual connection
   function writeToEngine(encodedPackets) {
     if (opts.volatile && !self.conn.transport.writable) return;
     for (var i = 0; i < encodedPackets.length; i++) {
@@ -183,12 +119,6 @@ Client.prototype.packet = function(packet, opts){
   }
 };
 
-/**
- * Called with incoming transport data.
- *
- * @api private
- */
-
 Client.prototype.ondata = function(data){
   // try/catch is needed for protocol violations (GH-1880)
   try {
@@ -198,11 +128,6 @@ Client.prototype.ondata = function(data){
   }
 };
 
-/**
- * Called when parser fully decodes a packet.
- *
- * @api private
- */
 
 Client.prototype.ondecoded = function(packet) {
   if (parser.CONNECT == packet.type) {
@@ -219,13 +144,6 @@ Client.prototype.ondecoded = function(packet) {
   }
 };
 
-/**
- * Handles an error.
- *
- * @param {Object} err object
- * @api private
- */
-
 Client.prototype.onerror = function(err){
   for (var id in this.sockets) {
     if (this.sockets.hasOwnProperty(id)) {
@@ -235,12 +153,6 @@ Client.prototype.onerror = function(err){
   this.conn.close();
 };
 
-/**
- * Called upon transport close.
- *
- * @param {String} reason
- * @api private
- */
 
 Client.prototype.onclose = function(reason){
   debug('client close with reason %s', reason);
@@ -258,12 +170,6 @@ Client.prototype.onclose = function(reason){
 
   this.decoder.destroy(); // clean up decoder
 };
-
-/**
- * Cleans up event listeners.
- *
- * @api private
- */
 
 Client.prototype.destroy = function(){
   this.conn.removeListener('data', this.ondata);
